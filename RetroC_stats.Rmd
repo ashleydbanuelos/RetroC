@@ -1,0 +1,1913 @@
+---
+title: "Manuscript10_6"
+author: "Ashley Banuelos"
+date: "2025-10-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Packages
+```{r}
+#Packages 
+library(lme4)
+library(emmeans)
+library(tidyverse)
+library(rstatix)
+library(ggplot2)
+library(performance)
+library(ggpattern)
+library(rlang)
+library(flextable)
+library(writexl)
+```
+
+Files
+```{r}
+#Files for analysis
+
+#Climate variability across California 
+climate <- read.csv("/Users/ashban/OneDrive - Colostate/Documents/CSU/Paustian/Point Blue/Manuscripts/Publishing_drafts_data/SOC_practices/SOC_R/alldata312.csv")
+head(climate)
+
+#Restored vs Unrestored 
+socf <- read.csv("/Users/ashban/OneDrive - Colostate/Documents/CSU/Paustian/Point Blue/Lab work/updatedsheets/working/alldataWSL.csv")
+socfnona <- socf[!is.na(socf$maomperc), ]
+socfnona <- socfnona[!is.na(socfnona$corrcpom), ]
+socfnona <- socfnona[!is.na(socfnona$bulkperc1), ]
+socfnona<- socfnona[!is.na(socfnona$per_clay), ]
+head(socfnona)
+soc_riparian <- socfnona%>%
+  filter(PlantingType.y == "Riparian")
+
+soc_range <- socfnona%>%
+  filter(PlantingType.y == "RangePlanting")
+
+soc_tree <- socfnona%>%
+  filter(PlantingType.y == "UplandOak")
+
+
+
+# comparison 
+soc_com <- read.csv("/Users/ashban/OneDrive - Colostate/Documents/CSU/Paustian/Point Blue/Lab work/updatedsheets/working/alldataWSL.csv")
+soc_com_n<- soc_com[!is.na(soc_com$maoc_stock), ]
+soc_com_n <- soc_com_n[!is.na(soc_com_n$poc_stock), ]
+soc_com_n<- soc_com_n[!is.na(soc_com_n$per_clay), ]
+soc_com_n <- soc_com_n%>%
+  filter(trt == "T")
+
+#canopy
+fcanopy <- read.csv("/Users/ashban/OneDrive - Colostate/Documents/CSU/Paustian/Point Blue/Manuscripts/Publishing_drafts_data/SOC_practices/SOC_R/alldata312.csv")
+fcanopy$Canopy<-ifelse(fcanopy$CanopyCover_0to4 > 0, "yes", "no")
+fcanopy$Canopy<-as.factor(fcanopy$Canopy)
+levels(fcanopy$Canopy)[levels(fcanopy$Canopy)=="yes"] <- "Under Canopy"
+levels(fcanopy$Canopy)[levels(fcanopy$Canopy)=="no"] <- "Outside Canopy"
+fcanopynona<- fcanopy[!is.na(fcanopy$Canopy), ]
+
+```
+
+Climate Differences
+```{R}
+#Climate differences 
+
+# Step 1: Average pseudo-replicates within each Ranch pair first
+pair_avg <- climate %>%
+  group_by(pair, climate) %>%   # replace climate_group with your actual grouping column name
+  summarise(
+    soc_Mg.ha  = mean(soc_Mg.ha,  na.rm = TRUE),
+    poc_stock  = mean(poc_stock,  na.rm = TRUE),
+    maoc_stock = mean(maoc_stock, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Step 2: Run ANOVAs on pair averages with log transformation
+aov_soc  <- aov(log(soc_Mg.ha)  ~ climate, data = pair_avg)
+aov_poc  <- aov(log(poc_stock)  ~ climate, data = pair_avg)
+aov_maoc <- aov(log(maoc_stock) ~ climate, data = pair_avg)
+
+# Step 3: Check assumptions
+check_model(aov_soc,  check = c("normality", "qq"))
+check_model(aov_poc,  check = c("normality", "qq"))
+check_model(aov_maoc, check = c("normality", "qq"))
+
+# Step 4: Results
+summary(aov_soc)
+summary(aov_poc)
+summary(aov_maoc)
+
+
+
+
+```
+
+TRT BY CLIMATE AND GROUP TRT RESULTS: No significant difference 
+
+```{r}
+#PER SOC 
+
+lm_p <- lmer(log(bulkperc1)~ climate*trt+trt*age.group+per_clay+(1|pair)+(1|ranch.pract), data= socfnona)
+emmeans(lm_p, revpairwise~ trt|climate)
+emmeans(lm_p, revpairwise~ trt|age.group)
+
+#Per POC 
+lm_p <- lmer(log(corrcpom)~ climate*trt+trt*age.group+per_clayper_clay+(1|pair)+(1|ranch.pract), data= socfnona)
+emmeans(lm_p, revpairwise~ trt|climate)
+emmeans(lm_p, revpairwise~ trt|age.group)
+
+#CHECK FOR ASSUMPTIONS 
+check_model(lm_p, check=c("linearity", "homogeneity"))
+summary(lm_p)
+
+#PER MAOC
+#Per POC 
+lm_p <- lmer(log(maomperc)~ climate*trt+trt*age.group+per_clayper_clay+(1|pair)+(1|ranch.pract), data= socfnona)
+emmeans(lm_p, revpairwise~ trt|climate)
+emmeans(lm_p, revpairwise~ trt|age.group)
+
+
+#CHECK FOR ASSUMPTIONS 
+check_model(lm_m, check=c("linearity", "homogeneity"))
+summary(lm_m)
+
+
+```
+Export climate results 
+```{r}
+#### export results data tables
+
+
+#### export results data tables
+
+# bulk C - by climate and age group
+bulk_climate_tbl <- as.data.frame(emmeans(lm_bulk, revpairwise ~ trt | climate)$contrasts)
+bulk_age_tbl     <- as.data.frame(emmeans(lm_bulk, revpairwise ~ trt | age.group)$contrasts)
+
+# corrcpom - by climate and age group
+corr_climate_tbl <- as.data.frame(emmeans(lm_corr, revpairwise ~ trt | climate)$contrasts)
+corr_age_tbl     <- as.data.frame(emmeans(lm_corr, revpairwise ~ trt | age.group)$contrasts)
+
+# maomperc - by climate and age group
+maom_climate_tbl <- as.data.frame(emmeans(lm_maom, revpairwise ~ trt | climate)$contrasts)
+maom_age_tbl     <- as.data.frame(emmeans(lm_maom, revpairwise ~ trt | age.group)$contrasts)
+
+
+doc <- read_docx() |>
+  body_add_par("Treatment × Climate and Age Group Effects on Soil Carbon Pools",
+               style = "heading 1") |>
+
+  body_add_par("Bulk C (%) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(bulk_climate_tbl)) |>
+  body_add_par("Bulk C (%) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(bulk_age_tbl)) |>
+
+  body_add_par("Corrected POM (corrcpom) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(corr_climate_tbl)) |>
+  body_add_par("Corrected POM (corrcpom) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(corr_age_tbl)) |>
+
+  body_add_par("MAOM (maomperc) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(maom_climate_tbl)) |>
+  body_add_par("MAOM (maomperc) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(maom_age_tbl))
+
+print(doc, target = "TrtContrasts_Climate_AgeGroup.docx")
+  
+
+```
+
+RIPARIAN SOC, POC, MAOC 
+
+```{r}
+
+#Carbon over time by trt (SOC)
+lm_p <- lmer(log(bulkperc1)~age_2023*trt+per_clay+(1|pair/ranch.pract/RanchName.x), data= soc_riparian)
+emtrends(lm_p, ~ trt, var = "age_2023")
+emtrends(lm_p, pairwise ~ trt, var = "age_2023")
+#PER SOC 
+
+lm_p <- lmer(log(bulkperc1)~ climate*trt+age.group*trt+per_clay+(1|pair/ranch.pract/RanchName.x), data= soc_riparian)
+emmeans(lm_p, revpairwise~ trt|climate)
+emmeans(lm_p, revpairwise~ trt|age.group)
+
+
+emmeans(lm_p, revpairwise~ trt|climate)
+emmeans(lm_p, revpairwise~ trt|age.group)
+
+#Per POC 
+lm_p <- lmer(log(corrcpom)~ climate*trt+age.group*trt+per_clay+(1|pair/ranch.pract/RanchName.x), data= soc_riparian)
+emmeans(lm_p, revpairwise~ trt|climate)
+emmeans(lm_p, revpairwise~ trt|age.group)
+
+#CHECK FOR ASSUMPTIONS 
+check_model(lm_p, check=c("linearity", "homogeneity"))
+summary(lm_p)
+
+#PER MAOC
+lm_m <- lmer(log(maomperc)~ climate*trt+age.group*trt+per_clay+(1|pair/ranch.pract/RanchName.x), data= soc_riparian)
+emmeans(lm_m, revpairwise~ trt|climate)
+emmeans(lm_m, revpairwise~ trt|age.group)
+
+#CHECK FOR ASSUMPTIONS 
+check_model(lm_m, check=c("linearity", "homogeneity"))
+summary(lm_m)
+
+
+
+```
+Export riparian results  
+```{r}
+#### export results data tables - riparian
+
+# bulk C - by climate and age group
+bulk_climate_tbl <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | climate)$contrasts)
+bulk_age_tbl     <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | age.group)$contrasts)
+
+# corrcpom - by climate and age group
+corr_climate_tbl <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | climate)$contrasts)
+corr_age_tbl     <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | age.group)$contrasts)
+
+# maomperc - by climate and age group
+maom_climate_tbl <- as.data.frame(emmeans(lm_m, revpairwise ~ trt | climate)$contrasts)
+maom_age_tbl     <- as.data.frame(emmeans(lm_m, revpairwise ~ trt | age.group)$contrasts)
+
+library(flextable)
+library(officer)
+
+doc <- read_docx() |>
+  body_add_par("Treatment × Climate and Age Group Effects on Soil Carbon Pools — Riparian",
+               style = "heading 1") |>
+
+  body_add_par("Bulk C (%) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(bulk_climate_tbl)) |>
+  body_add_par("Bulk C (%) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(bulk_age_tbl)) |>
+
+  body_add_par("Corrected POM (corrcpom) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(corr_climate_tbl)) |>
+  body_add_par("Corrected POM (corrcpom) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(corr_age_tbl)) |>
+
+  body_add_par("MAOM (maomperc) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(maom_climate_tbl)) |>
+  body_add_par("MAOM (maomperc) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(maom_age_tbl))
+
+print(doc, target = "TrtContrasts_Riparian_Climate_AgeGroup.docx")
+```
+
+Upland Oak SOC, POC, MAOC 
+
+```{r}
+#carbon over time by trt (SOC)
+lm_p <- lmer(log(bulkperc1)~age_2023*trt+per_clay+(1|pair/ranch.pract/RanchName.x), data= soc_tree)
+emtrends(lm_p, ~ trt, var = "age_2023")
+emtrends(lm_p, pairwise ~ trt, var = "age_2023")
+
+#PER SOC 
+
+
+lm_p <- lmer(log(bulkperc1)~ climate*trt+age.group*trt+per_clay+(1|ranch.pract/pair), data= soc_tree)
+emmeans(lm_p, revpairwise~ trt|climate)
+emmeans(lm_p, revpairwise~ trt|age.group)
+
+
+#Per POC 
+lm_p <- lmer(log(corrcpom)~ climate*trt+age.group*trt+per_clay+(1|ranch.pract/pair), data= soc_tree)
+emmeans(lm_p, revpairwise~ trt|climate)
+emmeans(lm_p, revpairwise~ trt|age.group)
+
+#CHECK FOR ASSUMPTIONS 
+check_model(lm_p, check=c("linearity", "homogeneity"))
+summary(lm_p)
+
+#PER MAOC
+lm_m <- lmer(log(maomperc)~ climate*trt+age.group*trtper_clay+(1|ranch.pract/pair), data= soc_tree)
+emmeans(lm_m, revpairwise~ trt|climate)
+emmeans(lm_m, revpairwise~ trt|age.group)
+
+#CHECK FOR ASSUMPTIONS 
+check_model(lm_m, check=c("linearity", "homogeneity"))
+summary(lm_m)
+
+
+
+```
+
+Export oak results 
+```{r}
+#### export results data tables - tree
+
+# bulk C - by climate and age group
+bulk_climate_tbl <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | climate)$contrasts)
+bulk_age_tbl     <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | age.group)$contrasts)
+
+# corrcpom - by climate and age group
+corr_climate_tbl <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | climate)$contrasts)
+corr_age_tbl     <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | age.group)$contrasts)
+
+# maomperc - by climate and age group
+maom_climate_tbl <- as.data.frame(emmeans(lm_m, revpairwise ~ trt | climate)$contrasts)
+maom_age_tbl     <- as.data.frame(emmeans(lm_m, revpairwise ~ trt | age.group)$contrasts)
+
+library(flextable)
+library(officer)
+
+doc <- read_docx() |>
+  body_add_par("Treatment × Climate and Age Group Effects on Soil Carbon Pools — Tree",
+               style = "heading 1") |>
+
+  body_add_par("Bulk C (%) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(bulk_climate_tbl)) |>
+  body_add_par("Bulk C (%) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(bulk_age_tbl)) |>
+
+  body_add_par("Corrected POM (corrcpom) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(corr_climate_tbl)) |>
+  body_add_par("Corrected POM (corrcpom) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(corr_age_tbl)) |>
+
+  body_add_par("MAOM (maomperc) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(maom_climate_tbl)) |>
+  body_add_par("MAOM (maomperc) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(maom_age_tbl))
+
+print(doc, target = "TrtContrasts_Tree_Climate_AgeGroup.docx")
+
+```
+
+Perennial Grass SOC, POC, MAOC 
+
+```{r}
+
+#Carbon over time by trt (SOC)
+
+lm_p <- lmer(log(bulkperc1)~age_2023*trt+per_clay+(1|pair/ranch.pract/RanchName.x), data= soc_range)
+emtrends(lm_p, ~ trt, var = "age_2023")
+emtrends(lm_p, pairwise ~ trt, var = "age_2023")
+#PER SOC 
+
+lm_p <- lmer(log(bulkperc1)~ climate*trt+age.group*trt+per_clay+(1|ranch.pract/pair), data= soc_range)
+emmeans(lm_p, revpairwise~ trt|climate)
+emmeans(lm_p, revpairwise~ trt|age.group)
+
+
+#Per POC 
+lm_p <- lmer(log(corrcpom)~ climate*trt+age.group*trt+per_clay+(1|ranch.pract/pair), data= soc_range)
+emmeans(lm_p, revpairwise~ trt|climate)
+emmeans(lm_p, revpairwise~ trt|age.group)
+
+#CHECK FOR ASSUMPTIONS 
+check_model(lm_p, check=c("linearity", "homogeneity"))
+summary(lm_p)
+
+#PER MAOC
+lm_m <- lmer(log(maomperc)~ climate*trt+age.group*trt+per_clay+(1|pair/ranch.pract), data= soc_range)
+emmeans(lm_m, revpairwise~ trt|climate)
+emmeans(lm_m, revpairwise~ trt|age.group)
+
+#CHECK FOR ASSUMPTIONS 
+check_model(lm_m, check=c("linearity", "homogeneity"))
+summary(lm_m)
+
+```
+
+Export perennial results 
+```{r}
+#### export results data tables - range
+
+# bulk C - by climate and age group
+bulk_climate_tbl <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | climate)$contrasts)
+bulk_age_tbl     <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | age.group)$contrasts)
+
+# corrcpom - by climate and age group
+corr_climate_tbl <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | climate)$contrasts)
+corr_age_tbl     <- as.data.frame(emmeans(lm_p, revpairwise ~ trt | age.group)$contrasts)
+
+# maomperc - by climate and age group
+maom_climate_tbl <- as.data.frame(emmeans(lm_m, revpairwise ~ trt | climate)$contrasts)
+maom_age_tbl     <- as.data.frame(emmeans(lm_m, revpairwise ~ trt | age.group)$contrasts)
+
+library(flextable)
+library(officer)
+
+doc <- read_docx() |>
+  body_add_par("Treatment × Climate and Age Group Effects on Soil Carbon Pools — Range",
+               style = "heading 1") |>
+
+  body_add_par("Bulk C (%) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(bulk_climate_tbl)) |>
+  body_add_par("Bulk C (%) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(bulk_age_tbl)) |>
+
+  body_add_par("Corrected POM (corrcpom) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(corr_climate_tbl)) |>
+  body_add_par("Corrected POM (corrcpom) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(corr_age_tbl)) |>
+
+  body_add_par("MAOM (maomperc) — by Climate", style = "heading 2") |>
+  body_add_flextable(flextable(maom_climate_tbl)) |>
+  body_add_par("MAOM (maomperc) — by Age Group", style = "heading 2") |>
+  body_add_flextable(flextable(maom_age_tbl))
+
+print(doc, target = "TrtContrasts_Range_Climate_AgeGroup.docx")
+
+```
+
+COMPARISON RESULTS: 
+SOC STOCK - No significant difference 
+
+POC STOCK - 
+  - AGE: Medium: Range planting higher compared tree (69%, 13.1, p=0.03)
+
+  - CLIMATE: Dry - perennial has higher POC compared to riparian (44%, p = 0.05) and oaks (52%, p = 0.02).
+  
+  
+MAOC STOCK -
+  - CLIMATE: Wet - Oaks higher than range (0.65, 37,  P= 0.08)
+  
+Comparisons of conservation practices 
+```{r}
+#COMPARISONS 
+
+#SOC stock 
+
+soc_climate <- lmer(log(soc_Mg.ha)~ climate*PlantingType.y+per_clay+(1|pair), data= soc_com_n)
+emmeans(soc_climate , revpairwise~ PlantingType.y|climate)
+
+soc_age <- lmer(log(soc_Mg.ha)~age.group*PlantingType.y+per_clay+(1|pair), data= soc_com_n)
+emmeans(soc_age, revpairwise~ PlantingType.y|age.group)
+
+
+#POC stock 
+poc_climate  <- lmer(log(poc_stock)~ climate*PlantingType.y+per_clay+(1|pair), data= soc_com_n)
+emmeans(poc_climate , pairwise~ PlantingType.y|climate)
+check_model(poc_climate, check=c("linearity", "homogeneity"))
+
+poc_age  <- lmer(log(poc_stock)~age.group*PlantingType.y+per_clay+(1|pair), data= soc_com_n)
+emmeans(poc_age, revpairwise~ PlantingType.y|age.group)
+check_model(poc_age, check=c("linearity", "homogeneity"))
+
+#MAOC STOCK 
+maoc_climate <- lmer(log(maoc_stock)~ climate*PlantingType.y+per_clay+(1|pair), data= soc_com_n)
+emmeans(maoc_climate, revpairwise~ PlantingType.y|climate)
+
+maoc_age<- lmer(log(maoc_stock)~age.group*PlantingType.y+per_clay+(1|pair), data= soc_com_n)
+emmeans(maoc_age, revpairwise~ PlantingType.y|age.group)
+
+#CHECK FOR ASSUMPTIONS 
+check_model(maoc_climate, check=c("linearity", "homogeneity"))
+check_model(maoc_age, check=c("linearity", "homogeneity"))
+summary(maoc_climate)
+
+```
+
+SOC over time WITH reference 
+```{r}
+#### Analysis - trends over time ####
+
+# Set age_2023 to 0 where trt is "T"
+socfnona_0 <- socfnona %>%
+  mutate(age_2023 = ifelse(trt == "C", 0, age_2023))
+
+# SOC
+soc_time <- lm(log(soc_Mg.ha) ~ PlantingType.y * climate * age_2023 + per_clay,
+               data = socfnona_0)
+summary(soc_time)
+emtrends(soc_time, ~ PlantingType.y | climate, var = "age_2023")
+
+# MAOC
+maoc_time <- lm(log(maoc_stock) ~ PlantingType.y * climate * age_2023 + per_clay,
+                data = socfnona_0)
+anova(maoc_time)
+emtrends(maoc_time, ~ PlantingType.y | climate, var = "age_2023")
+
+# POC
+poc_time <- lm(log(poc_stock) ~ PlantingType.y * climate * age_2023 + per_clay,
+               data = socfnona_0)
+anova(poc_time)
+emtrends(poc_time, ~ PlantingType.y | climate, var = "age_2023")
+
+# Extract trends with CI
+soc_ci <- emtrends(soc_time, ~ PlantingType.y | climate, var = "age_2023") %>%
+  as.data.frame()
+
+# Extract trends with p-values
+soc_p <- emtrends(soc_time, ~ PlantingType.y | climate, var = "age_2023") %>%
+  test() %>% as.data.frame()
+
+# Join together
+soc_trends <- left_join(soc_ci, soc_p, by = c("PlantingType.y", "climate", "age_2023.trend", "SE", "df")) %>%
+  mutate(Fraction = "SOC")
+
+# Repeat for MAOC
+maoc_ci <- emtrends(maoc_time, ~ PlantingType.y | climate, var = "age_2023") %>% as.data.frame()
+maoc_p  <- emtrends(maoc_time, ~ PlantingType.y | climate, var = "age_2023") %>% test() %>% as.data.frame()
+maoc_trends <- left_join(maoc_ci, maoc_p, by = c("PlantingType.y", "climate", "age_2023.trend", "SE", "df")) %>%
+  mutate(Fraction = "MAOC")
+
+# Repeat for POC
+poc_ci <- emtrends(poc_time, ~ PlantingType.y | climate, var = "age_2023") %>% as.data.frame()
+poc_p  <- emtrends(poc_time, ~ PlantingType.y | climate, var = "age_2023") %>% test() %>% as.data.frame()
+poc_trends <- left_join(poc_ci, poc_p, by = c("PlantingType.y", "climate", "age_2023.trend", "SE", "df")) %>%
+  mutate(Fraction = "POC")
+
+# Combine and clean
+all_trends <- bind_rows(soc_trends, maoc_trends, poc_trends) %>%
+  select(Fraction, climate, PlantingType.y, age_2023.trend, SE, lower.CL, upper.CL, t.ratio, p.value) %>%
+  rename(
+    Fraction = Fraction,
+    Climate  = climate,
+    Practice = PlantingType.y,
+    Slope    = age_2023.trend,
+    P.value  = p.value
+  ) %>%
+  mutate(
+    Slope    = round(Slope,    4),
+    SE       = round(SE,       4),
+    lower.CL = round(lower.CL, 4),
+    upper.CL = round(upper.CL, 4),
+    P.value  = round(P.value,  4)
+  )
+
+write_xlsx(all_trends, "carbon_trends.xlsx")
+```
+Extracting data for carbon over time 
+```{r}
+soc_trends <- emtrends(soc_time, ~ PlantingType.y | climate, var = "age_2023") %>%
+  test(side = "two-sided") %>%
+  as.data.frame() %>%
+  mutate(Fraction = "SOC")
+get_trends <- function(model, fraction) {
+  emtrends(model, ~ PlantingType.y | climate, var = "age_2023") %>%
+    confint() %>%
+    as.data.frame() %>%
+    left_join(
+      emtrends(model, ~ PlantingType.y | climate, var = "age_2023") %>%
+        test() %>%
+        as.data.frame() %>%
+        select(PlantingType.y, climate, t.ratio, p.value),
+      by = c("PlantingType.y", "climate")
+    ) %>%
+    mutate(Fraction = fraction)
+}
+
+all_trends <- bind_rows(
+  get_trends(soc_time,  "SOC"),
+  get_trends(maoc_time, "MAOC"),
+  get_trends(poc_time,  "POC")
+) %>%
+  select(Fraction, climate, PlantingType.y, age_2023.trend, SE, lower.CL, upper.CL, t.ratio, p.value) %>%
+  rename(
+    Climate  = climate,
+    Practice = PlantingType.y,
+    Slope    = age_2023.trend,
+    P.value  = p.value
+  ) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 4)))
+
+write_xlsx(all_trends, "carbon_trends.xlsx")
+```
+
+Extract R² and model fit statistics
+```{r} 
+library(broom)
+library(dplyr)
+library(writexl)
+
+####extract R2
+model_fit <- data.frame(
+  response     = c("SOC", "MAOC", "POC"),
+  r_squared    = c(summary(soc_time)$r.squared,
+                   summary(maoc_time)$r.squared,
+                   summary(poc_time)$r.squared),
+  adj_r_squared = c(summary(soc_time)$adj.r.squared,
+                    summary(maoc_time)$adj.r.squared,
+                    summary(poc_time)$adj.r.squared),
+  F_statistic  = c(summary(soc_time)$fstatistic[1],
+                   summary(maoc_time)$fstatistic[1],
+                   summary(poc_time)$fstatistic[1]),
+  df1          = c(summary(soc_time)$fstatistic[2],
+                   summary(maoc_time)$fstatistic[2],
+                   summary(poc_time)$fstatistic[2]),
+  df2          = c(summary(soc_time)$fstatistic[3],
+                   summary(maoc_time)$fstatistic[3],
+                   summary(poc_time)$fstatistic[3])
+) %>%
+   mutate(
+    p_raw     = pf(F_statistic, df1, df2, lower.tail = FALSE),
+    # ✅ Format p-value as text so it never rounds to 0
+    p_value   = ifelse(p_raw < 0.001, "< 0.001", round(p_raw, 4)),
+    r_squared     = round(r_squared, 4),
+    adj_r_squared = round(adj_r_squared, 4),
+    F_statistic   = round(F_statistic, 4)
+  ) %>%
+  select(-p_raw)
+  
+
+print(model_fit)
+
+# ---- Add to Excel export ----
+write_xlsx(
+  list(
+    "Model_fit"    = model_fit,
+    "ANOVA_all"    = anova_all,
+    "ANOVA_SOC"    = anova_soc,
+    "ANOVA_MAOC"   = anova_maoc,
+    "ANOVA_POC"    = anova_poc,
+    "Trends_all"   = emtrend_all,
+    "Trends_SOC"   = emtrend_soc,
+    "Trends_MAOC"  = emtrend_maoc,
+    "Trends_POC"   = emtrend_poc
+  ),
+  path = "SOC_model_results.xlsx"
+)
+
+```
+
+
+CANOPY - OVERALL 
+
+RESULTS: 
+ OVERALL SOC - 9% p=0.02
+ OVERALL MOAC - 10% P=0.02
+ OVERALL POC - 9% p=0.02
+
+```{r}
+###### without any interactions --  over all 
+canopy_corr <-lmer(log(corrcpom)~ Canopy + per_clay  + (1|RanchName.x), data = fcanopynona)
+emmeans(canopy_corr, revpairwise~ Canopy)
+
+
+canopy_maoc <-lmer(log(maomperc)~ Canopy + per_clay  + (1|RanchName.x), data = fcanopynona)
+emmeans(canopy_maoc, revpairwise~ Canopy)
+
+canopy_soc <-lmer(log(bulkperc1 )~ Canopy + per_clay  + (1|RanchName.x), data = fcanopynona)
+emmeans(canopy_soc, revpairwise~ Canopy)
+
+```
+
+Canopy by climate
+```{r}
+##### Canopy by climate 
+library(lme4)
+library(emmeans)
+
+canopy_corr_clim <- lmer(
+  log(corrcpom) ~ Canopy * climate + per_clay + (1 | RanchName.x),
+  data = fcanopynona
+)
+
+canopy_maoc_clim <- lmer(
+  log(maomperc) ~ Canopy * climate + per_clay + (1 | RanchName.x),
+  data = fcanopynona
+)
+
+canopy_soc_clim <- lmer(
+  log(bulkperc1) ~ Canopy * climate + per_clay + (1 | RanchName.x),
+  data = fcanopynona
+)
+
+
+
+```
+
+Export Canopy results
+```{r}
+###export results ### overall export  canopy 
+library(officer)
+library(flextable)
+
+emm_corr <- emmeans(canopy_corr, revpairwise ~ Canopy)
+emm_maoc <- emmeans(canopy_maoc, revpairwise ~ Canopy)
+emm_soc  <- emmeans(canopy_soc,  revpairwise ~ Canopy)
+
+corr_tbl <- as.data.frame(emm_corr$contrasts)
+maoc_tbl <- as.data.frame(emm_maoc$contrasts)
+soc_tbl  <- as.data.frame(emm_soc$contrasts)
+
+
+
+canopy_results <- read_docx() |>
+  body_add_par("Canopy Effects on Carbon Pools", style = "heading 1") |>
+
+  body_add_par("Corrected POM", style = "heading 2") |>
+  body_add_flextable(flextable(corr_tbl)) |>
+
+  body_add_par("MAOM", style = "heading 2") |>
+  body_add_flextable(flextable(maoc_tbl)) |>
+
+  body_add_par("SOC", style = "heading 2") |>
+  body_add_flextable(flextable(soc_tbl))
+
+print(canopy_results, target = "Canopy_overall_results.docx")
+
+
+```
+
+CANOPY - CLIMATE
+
+RESULTS:
+ CLIMATE POC - DRY 11%   P = 0.03
+ CLIMATE MAOC - WET 23% P=0.0002
+ CLIMATE SOC - wet 19% p= 0.0001
+ 
+```{R}
+library(lme4)
+library(emmeans)
+
+canopy_corr_clim <- lmer(
+  log(corrcpom) ~ Canopy * climate + per_clay + (1 | RanchName.x),
+  data = fcanopynona
+)
+
+canopy_maoc_clim <- lmer(
+  log(maomperc) ~ Canopy * climate + per_clay + (1 | RanchName.x),
+  data = fcanopynona
+)
+
+canopy_soc_clim <- lmer(
+  log(bulkperc1) ~ Canopy * climate + per_clay + (1 | RanchName.x),
+  data = fcanopynona
+)
+
+emm_corr <- emmeans(canopy_corr_clim, revpairwise ~ Canopy | climate)
+emm_maoc <- emmeans(canopy_maoc_clim, revpairwise ~ Canopy | climate)
+emm_soc  <- emmeans(canopy_soc_clim,  revpairwise ~ Canopy | climate)
+
+
+#CHECK FOR ASSUMPTIONS
+check_model(canopy1, check=c("linearity", "homogeneity"))
+```
+
+export result canopy climate 
+```{r}
+####  export results data tables 
+
+corr_tbl <- as.data.frame(emm_corr$contrasts)
+maoc_tbl <- as.data.frame(emm_maoc$contrasts)
+soc_tbl  <- as.data.frame(emm_soc$contrasts)
+
+library(flextable)
+library(officer)
+
+doc <- read_docx() |>
+  body_add_par("Canopy × Climate Effects on Soil Carbon Pools",
+               style = "heading 1") |>
+
+  body_add_par("Corrected POM (corrcpom)", style = "heading 2") |>
+  body_add_flextable(flextable(corr_tbl)) |>
+
+  body_add_par("MAOM (maomperc)", style = "heading 2") |>
+  body_add_flextable(flextable(maoc_tbl)) |>
+
+  body_add_par("SOC (%)", style = "heading 2") |>
+  body_add_flextable(flextable(soc_tbl))
+
+print(doc, target = "Canopy_by_Climate_emmeans.docx")
+
+
+
+```
+
+Cohen's d
+```{r}
+
+#### cohen's d ########################
+# 0.03 
+# Subset the data
+x1 <- alldataWSL$bulkperc1[alldataWSL$trt == "T"]
+x2 <- alldataWSL$bulkperc1[alldataWSL$trt == "C"]
+
+# Means
+mean1 <- mean(x1, na.rm = TRUE)
+mean2 <- mean(x2, na.rm = TRUE)
+
+# Standard deviations
+sd1 <- sd(x1, na.rm = TRUE)
+sd2 <- sd(x2, na.rm = TRUE)
+
+# Sample sizes
+n1 <- length(x1)
+n2 <- length(x2)
+
+# Pooled standard deviation
+sp <- sqrt(((n1 - 1) * sd1^2 + (n2 - 1) * sd2^2) / (n1 + n2 - 2))
+
+# Cohen's d
+cohens_d <- (mean1 - mean2) / sp
+
+# Print result
+cat("Cohen's d:", cohens_d, "\n")
+
+
+##### with confience interval 
+# install.packages("effsize") # if not already installed
+library(effsize)
+
+# Cohen's d with confidence interval
+d_result <- cohen.d(x1, x2, pooled = TRUE, hedges.correction = TRUE, conf.level = 0.95)
+d_result
+
+
+
+
+```
+
+Export comparison results
+```{r}
+
+library(broom.mixed)
+library(writexl)
+
+# Function to extract fixed effects from each model
+extract_model <- function(model, response, predictor_type) {
+  tidy(model, effects = "fixed") %>%
+    mutate(
+      Response = response,
+      Model    = predictor_type
+    ) %>%
+    select(Response, Model, term, estimate, std.error, statistic, p.value)
+}
+
+# Extract from each model
+soc_clim_df  <- extract_model(soc_climate,  "SOC stock",  "Climate")
+soc_age_df   <- extract_model(soc_age,      "SOC stock",  "Age Group")
+poc_clim_df  <- extract_model(poc_climate,  "POC stock",  "Climate")
+poc_age_df   <- extract_model(poc_age,      "POC stock",  "Age Group")
+maoc_clim_df <- extract_model(maoc_climate, "MAOC stock", "Climate")
+maoc_age_df  <- extract_model(maoc_age,     "MAOC stock", "Age Group")
+
+# Combine all
+all_models <- bind_rows(
+  soc_clim_df, soc_age_df,
+  poc_clim_df, poc_age_df,
+  maoc_clim_df, maoc_age_df
+) %>%
+  rename(
+    Term      = term,
+    Estimate  = estimate,
+    SE        = std.error,
+    Statistic = statistic,
+    P.value   = p.value
+  ) %>%
+  mutate(
+    Estimate  = round(Estimate,  3),
+    SE        = round(SE,        3),
+    Statistic = round(Statistic, 3),
+    P.value   = round(P.value,   4)
+  )
+
+# Export to Excel
+write_xlsx(all_models, "model_results.xlsx")
+
+```
+
+Table by climate 
+```{r}
+
+## export table by climate (dry/mesic)
+
+soc_table_fmt <- soc_com %>%
+  group_by(climate) %>%
+  summarise(
+    n = n(),
+        bulkperc1 = sprintf("%.2f ± %.2f",
+                        mean(bulkperc1, na.rm = TRUE),
+                        sd(bulkperc1, na.rm = TRUE) / sqrt(n)),
+
+    corrcpom = sprintf("%.2f ± %.2f",
+                       mean(corrcpom, na.rm = TRUE),
+                       sd(corrcpom, na.rm = TRUE) / sqrt(n)),
+
+    maomperc = sprintf("%.2f ± %.2f",
+                       mean(maomperc, na.rm = TRUE),
+                       sd(maomperc, na.rm = TRUE) / sqrt(n)),
+    soc_Mg.ha = sprintf("%.2f ± %.2f",
+                        mean(soc_Mg.ha, na.rm = TRUE),
+                        sd(soc_Mg.ha, na.rm = TRUE) / sqrt(n)),
+    
+    poc_stock = sprintf("%.2f ± %.2f",
+                        mean(poc_stock, na.rm = TRUE),
+                        sd(poc_stock, na.rm = TRUE) / sqrt(n)),
+    
+    maoc_stock = sprintf("%.2f ± %.2f",
+                         mean(maoc_stock, na.rm = TRUE),
+                         sd(maoc_stock, na.rm = TRUE) / sqrt(n)),
+    
+    fmaoc = sprintf("%.2f ± %.2f",
+                    mean(fmaoc, na.rm = TRUE),
+                    sd(fmaoc, na.rm = TRUE) / sqrt(n)),
+    
+    per_sand = sprintf("%.1f ± %.1f",
+                       mean(per_sand, na.rm = TRUE),
+                       sd(per_sand, na.rm = TRUE) / sqrt(n)),
+    
+    per_clay = sprintf("%.1f ± %.1f",
+                       mean(per_clay, na.rm = TRUE),
+                       sd(per_clay, na.rm = TRUE) / sqrt(n)),
+    
+    per_silt = sprintf("%.1f ± %.1f",
+                       mean(per_silt, na.rm = TRUE),
+                       sd(per_silt, na.rm = TRUE) / sqrt(n)),
+    
+    pH = sprintf("%.2f ± %.2f",
+                 mean(pH, na.rm = TRUE),
+                 sd(pH, na.rm = TRUE) / sqrt(n)),
+    
+    BD_g.cm3 = sprintf("%.2f ± %.2f",
+                       mean(BD_g.cm3, na.rm = TRUE),
+                       sd(BD_g.cm3, na.rm = TRUE) / sqrt(n)),
+    
+  biomass_gm2 = sprintf("%.2f ± %.2f",
+                       mean(biomass_gm2, na.rm = TRUE),
+                       sd(biomass_gm2, na.rm = TRUE) / sqrt(n)),
+    
+    .groups = "drop"
+  )
+
+soc_table_fmt_n <- soc_table_fmt %>%
+  group_by(climate) %>%
+  mutate(n = n()) %>%
+  ungroup()
+
+
+soc_flex <- flextable(soc_table_fmt) %>%
+  set_header_labels(
+     climate = "Climate", n = "n",
+    bulkperc1 = "Bulk C (%)",
+    corrcpom = "cPOM (%)",
+    maomperc = "MAOM (%)",
+    soc_Mg.ha = "SOC (Mg ha⁻¹)",
+    poc_stock = "POC stock (Mg ha⁻¹)",
+    maoc_stock = "MAOC stock (Mg ha⁻¹)",
+    fmaoc = "fMAOC",
+    per_sand = "Sand (%)",
+    per_clay = "Clay (%)",
+    per_silt = "Silt (%)",
+    pH = "pH",
+    BD_g.cm3 = "Bulk density (g cm⁻³)",
+     biomass_gm2 = "Herbaceous biomass (g m⁻²)"
+  ) %>%
+  align(align = "center", part = "all") %>%
+  autofit()
+
+save_as_docx(soc_flex, path = "clime_only.docx")
+```
+
+TRT
+```{r}
+#### Aridity level 
+## export table by climate (dry/mesic)
+soc_table_fmt <- soc_com %>%
+  group_by(trt) %>%
+  summarise(
+    n = n(),
+        bulkperc1 = sprintf("%.2f ± %.2f",
+                        mean(bulkperc1, na.rm = TRUE),
+                        sd(bulkperc1, na.rm = TRUE) / sqrt(n)),
+
+    corrcpom = sprintf("%.2f ± %.2f",
+                       mean(corrcpom, na.rm = TRUE),
+                       sd(corrcpom, na.rm = TRUE) / sqrt(n)),
+
+    maomperc = sprintf("%.2f ± %.2f",
+                       mean(maomperc, na.rm = TRUE),
+                       sd(maomperc, na.rm = TRUE) / sqrt(n)),
+    soc_Mg.ha = sprintf("%.2f ± %.2f",
+                        mean(soc_Mg.ha, na.rm = TRUE),
+                        sd(soc_Mg.ha, na.rm = TRUE) / sqrt(n)),
+    
+    poc_stock = sprintf("%.2f ± %.2f",
+                        mean(poc_stock, na.rm = TRUE),
+                        sd(poc_stock, na.rm = TRUE) / sqrt(n)),
+    
+    maoc_stock = sprintf("%.2f ± %.2f",
+                         mean(maoc_stock, na.rm = TRUE),
+                         sd(maoc_stock, na.rm = TRUE) / sqrt(n)),
+    
+    fmaoc = sprintf("%.2f ± %.2f",
+                    mean(fmaoc, na.rm = TRUE),
+                    sd(fmaoc, na.rm = TRUE) / sqrt(n)),
+    
+    per_sand = sprintf("%.1f ± %.1f",
+                       mean(per_sand, na.rm = TRUE),
+                       sd(per_sand, na.rm = TRUE) / sqrt(n)),
+    
+    per_clay = sprintf("%.1f ± %.1f",
+                       mean(per_clay, na.rm = TRUE),
+                       sd(per_clay, na.rm = TRUE) / sqrt(n)),
+    
+    per_silt = sprintf("%.1f ± %.1f",
+                       mean(per_silt, na.rm = TRUE),
+                       sd(per_silt, na.rm = TRUE) / sqrt(n)),
+    
+    pH = sprintf("%.2f ± %.2f",
+                 mean(pH, na.rm = TRUE),
+                 sd(pH, na.rm = TRUE) / sqrt(n)),
+    
+    BD_g.cm3 = sprintf("%.2f ± %.2f",
+                       mean(BD_g.cm3, na.rm = TRUE),
+                       sd(BD_g.cm3, na.rm = TRUE) / sqrt(n)),
+    
+  biomass_gm2 = sprintf("%.2f ± %.2f",
+                       mean(biomass_gm2, na.rm = TRUE),
+                       sd(biomass_gm2, na.rm = TRUE) / sqrt(n)),
+    
+    .groups = "drop"
+  )
+
+soc_flex <- flextable(soc_table_fmt) %>%
+  set_header_labels(
+    trt = "Treatment",
+    n = "n",
+    bulkperc1 = "Bulk C (%)",
+    corrcpom = "cPOM (%)",
+    maomperc = "MAOM (%)",
+    soc_Mg.ha = "SOC (Mg ha⁻¹)",
+    poc_stock = "POC stock (Mg ha⁻¹)",
+    maoc_stock = "MAOC stock (Mg ha⁻¹)",
+    fmaoc = "fMAOC",
+    per_sand = "Sand (%)",
+    per_clay = "Clay (%)",
+    per_silt = "Silt (%)",
+    pH = "pH",
+    BD_g.cm3 = "Bulk density (g cm⁻³)",
+    biomass_gm2 = "Herbaceous biomass (g m⁻²)"
+  ) %>%
+  align(align = "center", part = "all") %>%
+  flextable::autofit()
+
+save_as_docx(soc_flex, path = "trt_only.docx")
+
+
+
+```
+
+Table practice climate and age group by trt
+```{r}
+
+### tables 
+### practice climate and age group by trt
+
+ library(flextable)
+soc_table_fmt <- soc_com %>%
+  group_by(PlantingType.y,  climate,age.group, trt) %>%
+  summarise(
+    n = n(),
+        bulkperc1 = sprintf("%.2f ± %.2f",
+                        mean(bulkperc1, na.rm = TRUE),
+                        sd(bulkperc1, na.rm = TRUE) / sqrt(n)),
+
+    corrcpom = sprintf("%.2f ± %.2f",
+                       mean(corrcpom, na.rm = TRUE),
+                       sd(corrcpom, na.rm = TRUE) / sqrt(n)),
+
+    maomperc = sprintf("%.2f ± %.2f",
+                       mean(maomperc, na.rm = TRUE),
+                       sd(maomperc, na.rm = TRUE) / sqrt(n)),
+    soc_Mg.ha = sprintf("%.2f ± %.2f",
+                        mean(soc_Mg.ha, na.rm = TRUE),
+                        sd(soc_Mg.ha, na.rm = TRUE) / sqrt(n)),
+    
+    poc_stock = sprintf("%.2f ± %.2f",
+                        mean(poc_stock, na.rm = TRUE),
+                        sd(poc_stock, na.rm = TRUE) / sqrt(n)),
+    
+    maoc_stock = sprintf("%.2f ± %.2f",
+                         mean(maoc_stock, na.rm = TRUE),
+                         sd(maoc_stock, na.rm = TRUE) / sqrt(n)),
+    
+    fmaoc = sprintf("%.2f ± %.2f",
+                    mean(fmaoc, na.rm = TRUE),
+                    sd(fmaoc, na.rm = TRUE) / sqrt(n)),
+    
+    per_sand = sprintf("%.1f ± %.1f",
+                       mean(per_sand, na.rm = TRUE),
+                       sd(per_sand, na.rm = TRUE) / sqrt(n)),
+    
+    per_clay = sprintf("%.1f ± %.1f",
+                       mean(per_clay, na.rm = TRUE),
+                       sd(per_clay, na.rm = TRUE) / sqrt(n)),
+    
+    per_silt = sprintf("%.1f ± %.1f",
+                       mean(per_silt, na.rm = TRUE),
+                       sd(per_silt, na.rm = TRUE) / sqrt(n)),
+    
+    pH = sprintf("%.2f ± %.2f",
+                 mean(pH, na.rm = TRUE),
+                 sd(pH, na.rm = TRUE) / sqrt(n)),
+    
+    BD_g.cm3 = sprintf("%.2f ± %.2f",
+                       mean(BD_g.cm3, na.rm = TRUE),
+                       sd(BD_g.cm3, na.rm = TRUE) / sqrt(n)),
+    
+  biomass_gm2 = sprintf("%.2f ± %.2f",
+                       mean(biomass_gm2, na.rm = TRUE),
+                       sd(biomass_gm2, na.rm = TRUE) / sqrt(n)),
+    
+    .groups = "drop"
+  )
+
+soc_flex <- flextable(soc_table_fmt) %>%
+  set_header_labels(
+    PlantingType.y = "Practice",
+     climate = "Climate",
+    age.group = "age group",
+    trt = "trt",
+    bulkperc1 = "Bulk C (%)",
+    corrcpom = "cPOM (%)",
+    maomperc = "MAOM (%)",
+    soc_Mg.ha = "SOC (Mg ha⁻¹)",
+    poc_stock = "POC stock (Mg ha⁻¹)",
+    maoc_stock = "MAOC stock (Mg ha⁻¹)",
+    fmaoc = "fMAOC",
+    per_sand = "Sand (%)",
+    per_clay = "Clay (%)",
+    per_silt = "Silt (%)",
+    pH = "pH",
+    BD_g.cm3 = "Bulk density (g cm⁻³)",
+     biomass_gm2 = "Herbaceous biomass (g m⁻²)"
+  ) %>%
+  align(align = "center", part = "all") %>%
+  autofit()
+
+save_as_docx(soc_flex, path = "cons_summary_clime_age.docx")
+
+
+
+```
+
+Table practice climate and trt only 
+```{R}
+
+### table practice climate and trt only  
+library(flextable)
+soc_table_fmt <- soc_com %>%
+  group_by(PlantingType.y,  climate, trt) %>%
+  summarise(
+    n = n(),
+        bulkperc1 = sprintf("%.2f ± %.2f",
+                        mean(bulkperc1, na.rm = TRUE),
+                        sd(bulkperc1, na.rm = TRUE) / sqrt(n)),
+
+    corrcpom = sprintf("%.2f ± %.2f",
+                       mean(corrcpom, na.rm = TRUE),
+                       sd(corrcpom, na.rm = TRUE) / sqrt(n)),
+
+    maomperc = sprintf("%.2f ± %.2f",
+                       mean(maomperc, na.rm = TRUE),
+                       sd(maomperc, na.rm = TRUE) / sqrt(n)),
+    soc_Mg.ha = sprintf("%.2f ± %.2f",
+                        mean(soc_Mg.ha, na.rm = TRUE),
+                        sd(soc_Mg.ha, na.rm = TRUE) / sqrt(n)),
+    
+    poc_stock = sprintf("%.2f ± %.2f",
+                        mean(poc_stock, na.rm = TRUE),
+                        sd(poc_stock, na.rm = TRUE) / sqrt(n)),
+    
+    maoc_stock = sprintf("%.2f ± %.2f",
+                         mean(maoc_stock, na.rm = TRUE),
+                         sd(maoc_stock, na.rm = TRUE) / sqrt(n)),
+    
+    fmaoc = sprintf("%.2f ± %.2f",
+                    mean(fmaoc, na.rm = TRUE),
+                    sd(fmaoc, na.rm = TRUE) / sqrt(n)),
+    
+    per_sand = sprintf("%.1f ± %.1f",
+                       mean(per_sand, na.rm = TRUE),
+                       sd(per_sand, na.rm = TRUE) / sqrt(n)),
+    
+    per_clay = sprintf("%.1f ± %.1f",
+                       mean(per_clay, na.rm = TRUE),
+                       sd(per_clay, na.rm = TRUE) / sqrt(n)),
+    
+    per_silt = sprintf("%.1f ± %.1f",
+                       mean(per_silt, na.rm = TRUE),
+                       sd(per_silt, na.rm = TRUE) / sqrt(n)),
+    
+    pH = sprintf("%.2f ± %.2f",
+                 mean(pH, na.rm = TRUE),
+                 sd(pH, na.rm = TRUE) / sqrt(n)),
+    
+    BD_g.cm3 = sprintf("%.2f ± %.2f",
+                       mean(BD_g.cm3, na.rm = TRUE),
+                       sd(BD_g.cm3, na.rm = TRUE) / sqrt(n)),
+    
+  biomass_gm2 = sprintf("%.2f ± %.2f",
+                       mean(biomass_gm2, na.rm = TRUE),
+                       sd(biomass_gm2, na.rm = TRUE) / sqrt(n)),
+    
+    .groups = "drop"
+  )
+
+soc_flex <- flextable(soc_table_fmt) %>%
+  set_header_labels(
+    PlantingType.y = "Practice",
+     climate = "Climate",
+    trt = "trt",
+    bulkperc1 = "Bulk C (%)",
+    corrcpom = "cPOM (%)",
+    maomperc = "MAOM (%)",
+    soc_Mg.ha = "SOC (Mg ha⁻¹)",
+    poc_stock = "POC stock (Mg ha⁻¹)",
+    maoc_stock = "MAOC stock (Mg ha⁻¹)",
+    fmaoc = "fMAOC",
+    per_sand = "Sand (%)",
+    per_clay = "Clay (%)",
+    per_silt = "Silt (%)",
+    pH = "pH",
+    BD_g.cm3 = "Bulk density (g cm⁻³)",
+     biomass_gm2 = "Herbaceous biomass (g m⁻²)"
+  ) %>%
+  align(align = "center", part = "all") %>%
+  autofit()
+
+save_as_docx(soc_flex, path = "cons_summary_clime_only.docx")
+
+
+```
+
+Table for canopy
+```{r}
+## table by canopy 
+soc_summary <- fcanopy %>%
+  group_by( PlantingType.y,climate, trt) %>%
+  summarise(
+    n = n(),
+    bulkperc_mean = mean(bulkperc, na.rm = TRUE),
+    bulkperc_se   = sd(bulkperc, na.rm = TRUE) / sqrt(n),
+    
+    corrcpom_mean = mean(corrcpom, na.rm = TRUE),
+    corrcpom_se   = sd(corrcpom, na.rm = TRUE) / sqrt(n),
+    
+    maomperc_mean = mean(maomperc, na.rm = TRUE),
+    maomperc_se   = sd(maomperc, na.rm = TRUE) / sqrt(n),
+    
+    .groups = "drop"
+  )
+
+soc_summary
+
+write.csv(soc_summary, '/Users/ashban/OneDrive - Colostate/Documents/CSU/Paustian/Point Blue/Land change analysis/working_land/table_climate_only_wsl.csv')
+
+```
+
+Boxplot of all sites (updated 9/12)
+```{r}
+## boxplot of all sites SOC
+
+ggplot(soc_com, aes(x = trt, y = bulkperc1, fill = trt)) +
+  geom_boxplot() +
+  facet_wrap(
+    ~ pair,
+    scales = "free",
+    labeller = as_labeller(function(x) paste("Pair", match(x, unique(soc_com$pair))))
+  ) +
+  theme_bw() +
+  xlab(NULL) +
+  ylab("SOC (%)") +
+  ggtitle("SOC by Treatment for Each Pair") +
+  scale_fill_manual(
+    values = c("C" = "grey85", "T" = "grey40"),
+    labels = c("C" = "Reference", "T" = "Restored")
+  ) +
+  theme(
+    strip.text = element_text(size = 6),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+
+```
+
+Graph of climates by soc
+```{r}
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+install.packages("ggpattern")
+library(ggpattern)
+
+# Summarize all three variables by climate
+soc_summary <- climate %>%
+  mutate(climate = recode(climate,
+                          "DRY" = "Dry",
+                          "WET" = "Mesic")) %>%
+  group_by(climate) %>%
+  summarise(
+    mean_poc  = mean(poc_stock, na.rm = TRUE),
+    se_poc    = sd(poc_stock, na.rm = TRUE) / sqrt(sum(!is.na(poc_stock))),
+    mean_maoc = mean(maoc_stock, na.rm = TRUE),
+    se_maoc   = sd(maoc_stock, na.rm = TRUE) / sqrt(sum(!is.na(maoc_stock))),
+    mean_soc  = mean(soc_Mg.ha, na.rm = TRUE),
+    se_soc    = sd(soc_Mg.ha, na.rm = TRUE) / sqrt(sum(!is.na(soc_Mg.ha)))
+  )
+
+# Reshape all three to long format
+plot_df <- soc_summary %>%
+  pivot_longer(
+    cols = c(mean_poc, mean_maoc, mean_soc),
+    names_to = "fraction",
+    values_to = "mean"
+  ) %>%
+  mutate(
+    se = case_when(
+      fraction == "mean_poc"  ~ se_poc,
+      fraction == "mean_maoc" ~ se_maoc,
+      fraction == "mean_soc"  ~ se_soc
+    ),
+    fraction = recode(fraction,
+                      "mean_poc"  = "POC",
+                      "mean_maoc" = "MAOC",
+                      "mean_soc"  = "SOC"),
+    # Control bar order within each climate group
+    fraction = factor(fraction, levels = c("POC", "MAOC", "SOC"))
+  ) %>%
+  select(climate, fraction, mean, se)
+
+# Plot
+ggplot(plot_df, aes(x = climate, y = mean, fill = fraction, pattern = fraction)) +
+  ggpattern::geom_bar_pattern(
+    stat          = "identity",
+    position      = position_dodge(width = 0.75),
+    color         = "black",
+    width         = 0.65,
+    pattern_fill  = "black",
+    pattern_color = "black",
+    pattern_angle = 45,
+    pattern_density = 0.3,
+    pattern_spacing = 0.03
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    position = position_dodge(width = 0.75),
+    width    = 0.2,
+    linewidth = 0.7
+  ) +
+  scale_fill_manual(
+    values = c("POC"  = "white",
+               "MAOC" = "white",
+               "SOC"  = "gray50")  # SOC solid gray to distinguish it
+  ) +
+  ggpattern::scale_pattern_manual(
+    values = c("POC"  = "none",     # solid white
+               "MAOC" = "stripe",   # hatched
+               "SOC"  = "none")     # solid gray
+  ) +
+  labs(
+    x        = "Climate",
+    y        = expression("Stock (Mg ha"^-1*")"),
+    fill     = NULL,
+    pattern  = NULL,
+    title    = "SOC Fractions by Climate"
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid.major  = element_blank(),
+    panel.grid.minor  = element_blank(),
+    axis.text         = element_text(size = 12),
+    axis.title        = element_text(size = 14),
+    legend.title      = element_text(size = 11),
+    legend.text       = element_text(size = 10),
+    plot.margin       = margin(t = 30,  # top
+                               r = 30,  # right
+                               b = 30,  # bottom
+                               l = 30),  # left, in points
+    legend.position   = "top"
+    
+  ) +
+  guides(fill    = guide_legend(override.aes = list(pattern = c("none", "stripe", "none"))),
+         pattern = "none")  # suppress duplicate legend
+
+```
+Graph of canopy 
+```{r}
+
+
+# Install if needed
+install.packages("ggsignif")
+library(ggsignif)
+
+# Summarize by canopy
+canopy_summary <- fcanopynona %>%
+  group_by(Canopy) %>%
+  summarise(
+    mean_soc = mean(bulkperc1, na.rm = TRUE),
+    se_soc   = sd(bulkperc1, na.rm = TRUE) / sqrt(sum(!is.na(bulkperc1))),
+    .groups  = "drop"
+  )
+
+# Plot
+plot<- ggplot(canopy_summary, aes(x = Canopy, y = mean_soc, fill = Canopy, pattern = Canopy)) +
+  ggpattern::geom_bar_pattern(
+    stat            = "identity",
+    color           = "black",
+    width           = 0.6,
+    pattern_fill    = "gray40",
+    pattern_color   = "gray40",
+    pattern_angle   = 45,
+    pattern_density = 0.3,
+    pattern_spacing = 0.03
+  ) +
+  geom_errorbar(
+    aes(ymin = mean_soc - se_soc,
+        ymax = mean_soc + se_soc),
+    width     = 0.1,
+    linewidth = 0.7
+  ) +
+  geom_signif(
+    comparisons = list(c("Outside Canopy", "Under Canopy")),
+    annotations = "**",
+    tip_length  = 0.02,
+    textsize    = 6,
+    vjust       = 0.5,
+    y_position  = 2.2    # adjust this number up/down as needed
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +  # ← added here
+  scale_fill_manual(
+    values = c("Outside Canopy" = "gray85",
+               "Under Canopy"   = "gray45")
+  ) +
+  ggpattern::scale_pattern_manual(
+    values = c("Outside Canopy" = "stripe",
+               "Under Canopy"   = "none")
+  ) +
+  labs(
+    x = NULL,
+    y = "SOC (%)"
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text        = element_text(size = 12),
+    axis.title       = element_text(size = 14),
+    legend.position  = "none",
+    plot.margin      = margin(t = 20, r = 20, b = 20, l = 20)
+  )
+
+plot
+```
+Graph of carbon over time by practice 
+```{r fig.width=12, fig.height=6}
+
+
+# 1. Clean and recode the main dataframe
+soc <- socfnona_0 %>%
+  mutate(climate = case_match(climate,
+                              "DRY" ~ "Dry",
+                              "WET" ~ "Mesic",
+                              .default = climate))
+
+#### Plot ####
+# 2. Build the plotting dataframe using the 'soc' object we just created
+plot_df <- soc %>%
+  select(PlantingType.y, climate, age_2023, soc_Mg.ha, maoc_stock, poc_stock) %>%
+  pivot_longer(
+    cols      = c(soc_Mg.ha, maoc_stock, poc_stock),
+    names_to  = "fraction",
+    values_to = "stock"
+  ) %>%
+  mutate(
+    fraction = case_match(fraction,
+      "soc_Mg.ha"  ~ "SOC Stock\n(Mg C ha-1 Yr-1)",
+      "maoc_stock" ~ "MAOC Stock\n(Mg C ha-1 Yr-1)",
+      "poc_stock"  ~ "POC Stock\n(Mg C ha-1 Yr-1)",
+      .default     = fraction
+    ),
+    fraction = factor(fraction, levels = c(
+      "SOC Stock\n(Mg C ha-1 Yr-1)",
+      "MAOC Stock\n(Mg C ha-1 Yr-1)",
+      "POC Stock\n(Mg C ha-1 Yr-1)"
+    )),
+    climate = case_match(climate,
+      "Dry"   ~ "Dry Regions",
+      "Mesic" ~ "Mesic Regions",
+      .default = climate
+    )
+  )
+
+    
+
+options(repr.plot.width = 10, repr.plot.height = 6)
+# Plot
+ggplot(plot_df, aes(x = age_2023, y = stock, 
+                    color = PlantingType.y, 
+                    shape = PlantingType.y)) +
+  geom_point(alpha = 0.4, size = 2) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", linewidth = 0.8) +
+  facet_grid(fraction ~ climate, scales = "free_y") +
+  scale_color_manual(values = c(
+    "Riparian" = "maroon",   # replace Type1/2/3 with your actual PlantingType labels
+    "UplandOak" = "#56B4E9",
+    "RangePlanting" = "seagreen3"
+  )) +
+  labs(
+    x     = "Years of practice",
+    y     = NULL,
+    color = NULL,
+    shape = NULL
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid.minor  = element_blank(),
+    strip.background  = element_blank(),
+    strip.text        = element_text(size = 11),
+    axis.text         = element_text(size = 10),
+    axis.title        = element_text(size = 12),
+    legend.position   = "bottom"
+  )
+
+```
+Table soc for climate (mesic/dry)
+````{r}
+library(dplyr)
+library(writexl)
+
+# Means and SE by climate for each fraction
+climate_summary <- socfnona %>%
+  group_by(climate) %>%
+  summarise(
+    # SOC
+    SOC_mean = round(mean(soc_Mg.ha, na.rm = TRUE), 2),
+    SOC_se   = round(sd(soc_Mg.ha, na.rm = TRUE) / sqrt(sum(!is.na(soc_Mg.ha))), 2),
+    # MAOC
+    MAOC_mean = round(mean(maoc_stock, na.rm = TRUE), 2),
+    MAOC_se   = round(sd(maoc_stock, na.rm = TRUE) / sqrt(sum(!is.na(maoc_stock))), 2),
+    # POC
+    POC_mean = round(mean(poc_stock, na.rm = TRUE), 2),
+    POC_se   = round(sd(poc_stock, na.rm = TRUE) / sqrt(sum(!is.na(poc_stock))), 2),
+    n = n()
+  )
+
+# F-statistics from climate term in each model
+soc_anova  <- anova(aov_soc)
+maoc_anova <- anova(aov_maoc)
+poc_anova  <- anova(aov_poc)
+
+# Extract climate F and P values
+f_table <- data.frame(
+  Fraction = c("SOC", "MAOC", "POC"),
+  F_stat   = round(c(
+    soc_anova["climate", "F value"],
+    maoc_anova["climate", "F value"],
+    poc_anova["climate", "F value"]), 2),
+  P_value  = round(c(
+    soc_anova["climate", "Pr(>F)"],
+    maoc_anova["climate", "Pr(>F)"],
+    poc_anova["climate", "Pr(>F)"]), 4)
+)
+
+# Print to check
+print(climate_summary)
+print(f_table)
+
+# Export
+write_xlsx(list(
+  Climate_Summary = as.data.frame(climate_summary),
+  F_statistics    = f_table),
+  "climate_carbon_table.xlsx")
+
+
+
+````
+
+
+```{r}
+# Step 1 - collapse pseudoreplicates to site level
+site_means <- socfnona %>%
+  group_by(ranch.pract) %>%
+  summarise(
+    SOC  = mean(soc_Mg.ha, na.rm = TRUE),
+    MAOC = mean(maoc_stock, na.rm = TRUE),
+    POC  = mean(poc_stock, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Confirm correct number of sites
+nrow(site_means)
+
+# Step 2 - variability across site means
+data_var <- data.frame(
+  Fraction = c("SOC", "MAOC", "POC"),
+  Mean     = c(mean(site_means$SOC),  mean(site_means$MAOC),  mean(site_means$POC)),
+  SD       = c(sd(site_means$SOC),    sd(site_means$MAOC),    sd(site_means$POC)),
+  Min      = c(min(site_means$SOC),   min(site_means$MAOC),   min(site_means$POC)),
+  Max      = c(max(site_means$SOC),   max(site_means$MAOC),   max(site_means$POC)),
+  Fold     = c(max(site_means$SOC) / min(site_means$SOC),
+               max(site_means$MAOC) / min(site_means$MAOC),
+               max(site_means$POC) / min(site_means$POC)),
+  CV       = c(sd(site_means$SOC)  / mean(site_means$SOC)  * 100,
+               sd(site_means$MAOC) / mean(site_means$MAOC) * 100,
+               sd(site_means$POC)  / mean(site_means$POC)  * 100)
+) %>%
+  mutate(across(where(is.numeric), ~ round(., 2)))
+
+write_xlsx(data_var, "carbon_variability_summary.xlsx")
+```
+
+graph of conservation practice distribution by climate
+```{r}
+#conservation practice distribution by climate 
+head(socfnona)
+# Clean up labels if needed
+fcanopy <- socfnona %>%
+  mutate(
+    climate = recode(climate, "DRY" = "Dry", "WET" = "Mesic"),
+    climate = factor(climate, levels = c("Dry", "Mesic")),
+    climate = recode(climate, "T" = "Restored", "C" = "Reference"),
+  )
+
+ggplot(fcanopy, aes(x = climate, y = bulkperc1, fill = trt)) +  # replace trt with your reference/restored column name
+  geom_boxplot(
+    outlier.shape  = 16,
+    outlier.size   = 1.5,
+    outlier.colour = "gray40",
+    width          = 0.6,
+    position       = position_dodge(width = 0.75)
+  ) +
+  facet_wrap(~ PlantingType.y, nrow = 1) +  # one panel per practice
+  scale_fill_manual(
+    values = c("C" = "gray85",   # light gray = reference
+               "T"  = "gray40"),  # dark gray = restored
+    name   = NULL
+  ) +
+  scale_x_discrete(labels = c("Dry", "Mesic")) +
+  labs(
+    x = NULL,
+    y = "SOC (%)"
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid.major  = element_blank(),
+    panel.grid.minor  = element_blank(),
+    strip.background  = element_rect(fill = "gray90", color = "black"),
+    strip.text        = element_text(size = 12, face = "bold"),
+    axis.text         = element_text(size = 11),
+    axis.title        = element_text(size = 13),
+    legend.position   = "right",
+    legend.text       = element_text(size = 11),
+    plot.margin       = margin(t = 20, r = 20, b = 20, l = 20)
+  )
+
+
+
+
+```
+
+# SOC ~ trt*year + (1|ranch/pair/plot) - graphs for practices 
+```{r}
+
+# ── Models: all practices together with climate and PlantingType.y ────────────
+soc_time  <- lmer(log(soc_Mg.ha)  ~ trt * age_2023 * climate * PlantingType.y + per_clay + 
+                    (1 | RanchName.x/pair/ranch.pract), data = socfnona)
+maoc_time <- lmer(log(maoc_stock) ~ trt * age_2023 * climate * PlantingType.y + per_clay + 
+                    (1 | RanchName.x/pair/ranch.pract), data = socfnona)
+poc_time  <- lmer(log(poc_stock)  ~ trt * age_2023 * climate * PlantingType.y + per_clay + 
+                    (1 | RanchName.x/pair/ranch.pract), data = socfnona)
+
+# ── Check interaction significance ───────────────────────────────────────────
+anova(soc_time)
+anova(maoc_time)
+anova(poc_time)
+
+# ── Extract slopes by trt, climate, and PlantingType.y ───────────────────────
+get_trends <- function(model, fraction) {
+  ci <- emtrends(model, ~ trt | climate + PlantingType.y, var = "age_2023") %>% 
+    as.data.frame()
+  pv <- emtrends(model, ~ trt | climate + PlantingType.y, var = "age_2023") %>% 
+    test() %>% 
+    as.data.frame() %>%
+    select(trt, climate, PlantingType.y, t.ratio, p.value)
+  left_join(ci, pv, by = c("trt", "climate", "PlantingType.y")) %>%
+    mutate(Fraction = fraction)
+}
+
+all_trends <- bind_rows(
+  get_trends(soc_time,  "SOC"),
+  get_trends(maoc_time, "MAOC"),
+  get_trends(poc_time,  "POC")
+) %>%
+  select(Fraction, climate, PlantingType.y, trt, age_2023.trend, SE, 
+         lower.CL, upper.CL, t.ratio, p.value) %>%
+  rename(
+    Climate   = climate,
+    Practice  = PlantingType.y,
+    Treatment = trt,
+    Slope     = age_2023.trend,
+    P.value   = p.value
+  ) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 4)))
+
+# ── Model fit statistics ──────────────────────────────────────────────────────
+model_fit <- data.frame(
+  Response = c("SOC", "MAOC", "POC"),
+  AIC      = c(AIC(soc_time), AIC(maoc_time), AIC(poc_time)),
+  BIC      = c(BIC(soc_time), BIC(maoc_time), BIC(poc_time))
+) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+# ── Plot ──────────────────────────────────────────────────────────────────────
+plot_df <- socfnona %>%
+  mutate(
+    climate = case_match(climate,
+      "DRY" ~ "Dry Regions",
+      "WET" ~ "Mesic Regions",
+      .default = climate
+    )
+  ) %>%
+  select(trt, PlantingType.y, climate, age_2023, soc_Mg.ha, maoc_stock, poc_stock) %>%
+  pivot_longer(
+    cols      = c(soc_Mg.ha, maoc_stock, poc_stock),
+    names_to  = "fraction",
+    values_to = "stock"
+  ) %>%
+  mutate(
+    fraction = case_match(fraction,
+      "soc_Mg.ha"  ~ "SOC Stock\n(Mg C ha⁻¹ Yr⁻¹)",
+      "maoc_stock" ~ "MAOC Stock\n(Mg C ha⁻¹ Yr⁻¹)",
+      "poc_stock"  ~ "POC Stock\n(Mg C ha⁻¹ Yr⁻¹)"
+    ),
+    fraction = factor(fraction, levels = c(
+      "SOC Stock\n(Mg C ha⁻¹ Yr⁻¹)",
+      "MAOC Stock\n(Mg C ha⁻¹ Yr⁻¹)",
+      "POC Stock\n(Mg C ha⁻¹ Yr⁻¹)"
+    ))
+  )
+
+
+practice_colors <- c(
+  "Riparian"      = "maroon",
+  "UplandOak"     = "#56B4E9",
+  "RangePlanting" = "seagreen3"
+)
+
+for (practice in unique(plot_df$PlantingType.y)) {
+  
+  p <- ggplot(
+    subset(plot_df, PlantingType.y == practice),
+    aes(
+      x = age_2023,
+      y = stock,
+      linetype = trt,
+      shape = trt
+    )
+  ) +
+    geom_point(
+      color = practice_colors[practice],
+      alpha = 0.4,
+      size = 2
+    ) +
+    geom_smooth(
+      color = practice_colors[practice],
+      method = "lm",
+      se = FALSE,
+      linewidth = 0.8
+    ) +
+    facet_grid(
+      fraction ~ climate,
+      scales = "free_y"
+    ) +
+    scale_linetype_manual(
+      values = c(
+        "T" = "solid",
+        "C" = "dashed"
+      ),
+      labels = c(
+        "T" = "Treatment",
+        "C" = "Control"
+      )
+    ) +
+    scale_shape_manual(
+      values = c(
+        "T" = 16,
+        "C" = 17
+      ),
+      labels = c(
+        "T" = "Treatment",
+        "C" = "Control"
+      )
+    ) +
+    labs(
+      title = practice,
+      x = "Years of practice",
+      y = NULL,
+      linetype = NULL,
+      shape = NULL
+    ) +
+    theme_bw() +
+    theme(
+      panel.grid.minor = element_blank(),
+      strip.background = element_blank(),
+      strip.text = element_text(size = 11),
+      plot.title = element_text(size = 14, face = "bold"),
+      axis.text = element_text(size = 10),
+      axis.title = element_text(size = 12),
+      legend.position = "bottom"
+    )
+  
+  print(p)
+}
+
+get_slope_comparisons <- function(model, fraction) {
+
+  trends <- emtrends(
+    model,
+    ~ trt | climate + PlantingType.y,
+    var = "age_2023"
+  )
+
+  contrast(
+    trends,
+    method = list("T - C" = c(-1, 1))
+  ) %>%
+    as.data.frame() %>%
+    mutate(Fraction = fraction)
+
+}
+
+slope_comparisons <- bind_rows(
+  get_slope_comparisons(soc_time, "SOC"),
+  get_slope_comparisons(maoc_time, "MAOC"),
+  get_slope_comparisons(poc_time, "POC")
+)
+
+slope_comparisons
+
+write.csv(
+  slope_comparisons,
+  "slope_comparisons.csv",
+  row.names = FALSE
+)
+
+
+```
+
+
+# ── Calculate T - C difference within each pair ───────────────────────────────
+```{r}
+
+diff_df <- socfnona %>%
+  select(pair, RanchName.x, PlantingType.y, climate, trt, age_2023,
+         soc_Mg.ha, maoc_stock, poc_stock) %>%
+  pivot_longer(
+    cols      = c(soc_Mg.ha, maoc_stock, poc_stock),
+    names_to  = "fraction",
+    values_to = "stock"
+  ) %>%
+  group_by(pair, PlantingType.y, climate, fraction, age_2023) %>%
+  summarise(
+    diff = stock[trt == "T"] - stock[trt == "C"],
+    .groups = "drop"
+  ) %>%
+  mutate(
+    fraction = case_match(fraction,
+      "soc_Mg.ha"  ~ "SOC Stock\n(Mg C ha⁻¹)",
+      "maoc_stock" ~ "MAOC Stock\n(Mg C ha⁻¹)",
+      "poc_stock"  ~ "POC Stock\n(Mg C ha⁻¹)"
+    ),
+    fraction = factor(fraction, levels = c(
+      "SOC Stock\n(Mg C ha⁻¹)",
+      "MAOC Stock\n(Mg C ha⁻¹)",
+      "POC Stock\n(Mg C ha⁻¹)"
+    )),
+    climate = case_match(climate,
+      "DRY" ~ "Dry Regions",
+      "WET" ~ "Mesic Regions",
+      .default = climate
+    )
+  )
+
+# ── Plot the difference over time ─────────────────────────────────────────────
+ggplot(diff_df, aes(x = age_2023, y = diff, color = PlantingType.y)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50", linewidth = 0.6) +
+  geom_point(alpha = 0.4, size = 2) +
+  geom_smooth(method = "lm", se = TRUE, linewidth = 0.8) +
+  facet_grid(fraction ~ climate, scales = "free_y") +
+  scale_color_manual(values = c(
+    "Riparian"      = "maroon",
+    "UplandOak"     = "#56B4E9",
+    "RangePlanting" = "seagreen3"
+  )) +
+  labs(
+    x     = "Years of practice",
+    y     = "Treatment − Control (Mg C ha⁻¹)",
+    color = NULL
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid.minor = element_blank(),
+    strip.background = element_blank(),
+    strip.text       = element_text(size = 11),
+    axis.text        = element_text(size = 10),
+    axis.title       = element_text(size = 12),
+    legend.position  = "bottom"
+  )
+
+
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
